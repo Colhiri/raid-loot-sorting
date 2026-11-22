@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Version>1.0.1</Version>
+    <GameManaged>$(SptRoot)/EscapeFromTarkov_Data/Managed</GameManaged>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp;Comfort;Sirenix.Serialization;Newtonsoft.Json;UnityEngine;UnityEngine.CoreModule;UnityEngine.UI;Unity.TextMeshPro">
+      <HintPath>$(GameManaged)/%(Identity).dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony;BepInEx">
+      <HintPath>$(SptRoot)/BepInEx/core/%(Identity).dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Tyfon.UIFixes">
+      <HintPath>$(SptRoot)/BepInEx/plugins/Tyfon.UIFixes.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
