@@ -7,6 +7,7 @@ using EFT.UI;
 using HarmonyLib;
 using UIFixes;
 using static RaidLootSorting.InventoryTree;
+using static RaidLootSorting.ModText;
 
 namespace RaidLootSorting;
 
@@ -60,7 +61,9 @@ internal static class LootSorting
         catch (Exception error)
         {
             RaidLootPlugin.Log.LogError(error);
-            NotificationManagerClass.DisplayWarningNotification("Сортировка остановлена из-за ошибки переноса.");
+            NotificationManagerClass.DisplayWarningNotification(Translate(
+                "Sorting stopped because an item could not be transferred.",
+                "Сортировка остановлена из-за ошибки переноса."));
         }
         finally
         {
@@ -79,7 +82,7 @@ internal static class LootSorting
         var loot = Sort(EquipmentLoot(equipment, selected, loadout)).ToArray();
         if (loot.Length == 0)
         {
-            NotificationManagerClass.DisplayMessageNotification("Нет предметов для выгрузки.");
+            NotificationManagerClass.DisplayMessageNotification(Translate("No items to unload.", "Нет предметов для выгрузки."));
             return;
         }
 
@@ -298,19 +301,27 @@ internal static class LootSorting
     {
         if (outcome == Outcome.Interrupted)
         {
-            NotificationManagerClass.DisplayWarningNotification($"Перенос прерван. Перемещено: {moved}.");
+            NotificationManagerClass.DisplayWarningNotification(Translate(
+                $"Transfer interrupted. Items moved: {moved}.",
+                $"Перенос прерван. Перемещено: {moved}."));
         }
         else if (outcome == Outcome.NoSpace)
         {
-            NotificationManagerClass.DisplayWarningNotification($"В зоне выгрузки схрона нет места для следующего предмета. Перемещено: {moved}, осталось: {total - moved}.");
+            NotificationManagerClass.DisplayWarningNotification(Translate(
+                $"The stash unload area has no room for the next item. Moved: {moved}. Left on the PMC: {total - moved}.",
+                $"В зоне выгрузки схрона нет места для следующего предмета. Перемещено: {moved}. Осталось на ЧВК: {total - moved}."));
         }
         else if (moved == 0)
         {
-            NotificationManagerClass.DisplayMessageNotification("Нет предметов, которые можно переместить в подходящее место.");
+            NotificationManagerClass.DisplayMessageNotification(Translate(
+                "No items could be moved to a suitable destination.",
+                "Нет предметов, которые можно переместить в подходящее место."));
         }
         else
         {
-            NotificationManagerClass.DisplayMessageNotification($"Перемещено: {moved}, осталось на месте: {total - moved}.");
+            NotificationManagerClass.DisplayMessageNotification(Translate(
+                $"Items moved: {moved}. Left in place: {total - moved}.",
+                $"Перемещено: {moved}. Осталось на месте: {total - moved}."));
         }
     }
 }

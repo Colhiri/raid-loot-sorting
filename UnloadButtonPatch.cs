@@ -31,7 +31,10 @@ internal static class UnloadButtonPatch
         button ??= Create(pin.parent);
         button.GetComponent<UnloadButtonPosition>().Bind(pin, ____lockModeButton?.transform as RectTransform);
         button.GetComponent<HoverTooltipArea>().Init(context.Tooltip,
-            "Выгрузить лут\nС выделением на ЧВК — только выделенное.\nБез снимка рейда — вся съёмная экипировка.", rawText: true);
+            ModText.Translate(
+                "Unload loot\nWith a PMC selection, unloads the selected items.\nWithout a raid snapshot, unloads all removable gear.",
+                "Выгрузить лут\nС выделением на ЧВК выгружает выбранные предметы.\nБез снимка рейда выгружает всю съёмную экипировку."),
+            rawText: true);
         string profileId = player.Profile_0.Id;
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(() => LootSorting.Unload(profileId));

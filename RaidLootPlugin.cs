@@ -11,7 +11,7 @@ using UIFixes;
 
 namespace RaidLootSorting;
 
-[BepInPlugin("com.colhirux.raidlootsorting", "Raid Loot Sorting", "1.0.3")]
+[BepInPlugin("com.colhirux.raidlootsorting", "Raid Loot Sorting", "1.0.4")]
 [BepInProcess("EscapeFromTarkov.exe")]
 [BepInDependency("com.SPT.core")]
 [BepInDependency("Tyfon.UIFixes", "5.3.9")]
@@ -64,7 +64,7 @@ internal static class StashContextMenu
             ? MultiSelect.ItemContexts.Select(context => context.Item).Where(item => InventoryTree.InStash(item, stash))
                 .Distinct().ToArray()
             : new[] { clicked };
-        __result.method_2("RaidLootSorting.Distribute", "Распределить по контейнерам",
+        __result.method_2("RaidLootSorting.Distribute", ModText.Translate("Distribute to containers", "Распределить по контейнерам"),
             () => LootSorting.Distribute(player, stash, selected));
     }
 }
