@@ -190,6 +190,10 @@ internal static class LootSorting
 
             var parent = entry.Item.CurrentAddress.Container.ParentItem as CompoundItem;
             var outcome = await TryContainers(player, stash, entry, containers, improveCurrent: parent == null || !sources.Contains(parent));
+            if (outcome == Outcome.Unavailable && entry.Item.CurrentAddress.Container != stash.Grid)
+            {
+                (outcome, _) = await TryGrid(player, entry, stash.Grid);
+            }
             if (outcome == Outcome.Interrupted)
             {
                 Report(moved, loot.Length, outcome);
