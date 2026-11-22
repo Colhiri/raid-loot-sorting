@@ -7,6 +7,7 @@ using EFT.Communications;
 using EFT.InventoryLogic;
 using EFT.UI;
 using HarmonyLib;
+using UIFixes;
 using static RaidLootSorting.InventoryTree;
 
 namespace RaidLootSorting;
@@ -39,7 +40,7 @@ internal static class LootSorting
     {
         if (TryGetStash(ItemUiContext.Instance, out var player, out var stash) && player._clientProfile.Id == profileId)
         {
-            _ = Run(() => UnloadRaidLoot(player, stash));
+            _ = Run(() => UnloadEquipment(player, stash));
         }
     }
 
@@ -69,21 +70,18 @@ internal static class LootSorting
         }
     }
 
-    private static async Task UnloadRaidLoot(BackEndInventoryController player, Stash stash)
+    private static async Task UnloadEquipment(BackEndInventoryController player, Stash stash)
     {
-        var loadout = RaidLoadout.Read(player._clientProfile);
-        if (loadout == null)
-        {
-            NotificationManager.DisplayWarningNotification(
-                "Нет данных об экипировке на старте рейда. Мод запомнит её при следующем входе за ЧВК. Сохранять сборку вручную не нужно.");
-            return;
-        }
-
         var equipment = player.Inventory.Equipment;
-        var loot = Sort(RaidLoot(equipment, loadout)).ToArray();
+        var selected = MultiSelect.Enabled
+            ? MultiSelect.ItemContexts.Concat(MultiSelect.SecondaryContexts)
+                .Select(context => context.Item).Where(item => item.GetAllParentItems().Contains(equipment)).ToHashSet()
+            : new HashSet<Item>();
+        var loadout = selected.Count == 0 ? RaidLoadout.Read(player._clientProfile) : null;
+        var loot = Sort(EquipmentLoot(equipment, selected, loadout)).ToArray();
         if (loot.Length == 0)
         {
-            NotificationManager.DisplayMessageNotification("На персонаже нет нового лута для выгрузки.");
+            NotificationManager.DisplayMessageNotification("Нет предметов для выгрузки.");
             return;
         }
 
@@ -166,8 +164,7 @@ internal static class LootSorting
             return;
         }
 
-        var selected = selection.Where(item => InStash(item, stash)).ToHashSet();
-        var roots = selected.Where(item => !item.GetAllParentItems().Any(selected.Contains)).ToArray();
+        var roots = SelectionRoots(selection.Where(item => InStash(item, stash)).ToHashSet()).ToArray();
         var sources = roots.OfType<CompoundItem>().Where(item => IsStorage(item) && !item.IsEmpty).ToHashSet();
         var loot = Sort(roots.SelectMany(item => item is CompoundItem source && sources.Contains(source)
             ? source.Grids.SelectMany(grid => grid.Items)

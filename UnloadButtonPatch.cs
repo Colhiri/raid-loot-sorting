@@ -1,8 +1,6 @@
-using System.Linq;
 using EFT.InventoryLogic;
 using EFT.UI;
 using HarmonyLib;
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,99 +10,135 @@ namespace RaidLootSorting;
 internal static class UnloadButtonPatch
 {
     private const string ButtonName = "RaidLootSortingButton";
+    private static readonly AccessTools.FieldRef<ToggleButton, Image> PinBackground =
+        AccessTools.FieldRefAccess<ToggleButton, Image>("_image");
+    private static readonly AccessTools.FieldRef<ToggleButton, Sprite> PinIdleSprite =
+        AccessTools.FieldRefAccess<ToggleButton, Sprite>("_onSprite");
 
-    private static void Postfix(CompoundItem item, bool inRaid, ItemsPanel.EItemsTab tab, ToggleEFT ____sortingTableTab)
+    private static void Postfix(CompoundItem item, bool inRaid, ItemsPanel.EItemsTab tab,
+        ToggleButton ____pinModeButton, ToggleButton ____lockModeButton)
     {
-        if (____sortingTableTab == null || ____sortingTableTab.transform is not RectTransform tableButton)
+        if (____pinModeButton == null || ____pinModeButton.transform is not RectTransform pin)
         {
             return;
         }
 
-        var toolbar = tableButton.parent;
-        var button = toolbar.Find(ButtonName)?.GetComponent<Button>();
-        if (inRaid || tab != ItemsPanel.EItemsTab.Gear || !____sortingTableTab.gameObject.activeSelf
-            || !LootSorting.TryGetStash(ItemUiContext.Instance, out var player, out var stash) || item != stash)
+        var button = pin.parent.Find(ButtonName)?.GetComponent<Button>();
+        var context = ItemUiContext.Instance;
+        if (inRaid || tab != ItemsPanel.EItemsTab.Gear || !pin.gameObject.activeSelf
+            || !LootSorting.TryGetStash(context, out var player, out var stash) || item != stash)
         {
             button?.gameObject.SetActive(false);
             return;
         }
 
-        button ??= Create(toolbar, ____sortingTableTab.GetComponentInChildren<TextMeshProUGUI>(true));
-        button.GetComponent<UnloadButtonPosition>().Bind(tableButton);
+        button ??= Create(pin.parent, PinBackground(____pinModeButton), PinIdleSprite(____pinModeButton));
+        button.GetComponent<UnloadButtonPosition>().Bind(pin, ____lockModeButton?.transform as RectTransform);
+        button.GetComponent<HoverTooltipArea>().Init(context.Tooltip,
+            "Выгрузить лут\nС выделением на ЧВК — только выделенное.\nБез снимка рейда — вся съёмная экипировка.", rawText: true);
         string profileId = player._clientProfile.Id;
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(() => LootSorting.Unload(profileId));
         button.gameObject.SetActive(true);
     }
 
-    private static Button Create(Transform parent, TextMeshProUGUI? referenceLabel)
+    private static Button Create(Transform parent, Image reference, Sprite idleSprite)
     {
         var control = new GameObject(ButtonName, typeof(RectTransform), typeof(Image), typeof(Button),
-            typeof(LayoutElement), typeof(UnloadButtonPosition));
-        var rect = (RectTransform)control.transform;
-        rect.SetParent(parent, false);
-        rect.pivot = new Vector2(0f, 0.5f);
-        rect.sizeDelta = new Vector2(144f, 20f);
+            typeof(LayoutElement), typeof(UnloadButtonPosition), typeof(HoverTooltipArea));
+        control.transform.SetParent(parent, false);
         control.GetComponent<LayoutElement>().ignoreLayout = true;
 
         var background = control.GetComponent<Image>();
-        background.color = new Color32(39, 48, 53, 255);
+        background.sprite = idleSprite != null ? idleSprite : reference.sprite;
+        background.type = reference.type;
+        background.color = reference.color;
 
         var button = control.GetComponent<Button>();
         button.targetGraphic = background;
+        button.navigation = new Navigation { mode = Navigation.Mode.None };
         var colors = button.colors;
-        colors.colorMultiplier = 1.25f;
-        colors.normalColor = new Color(0.8f, 0.8f, 0.8f);
+        colors.normalColor = Color.white;
+        colors.highlightedColor = Color.white;
+        colors.pressedColor = new Color(0.75f, 0.75f, 0.75f);
         button.colors = colors;
 
-        var label = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI)).GetComponent<TextMeshProUGUI>();
-        label.rectTransform.SetParent(rect, false);
-        label.rectTransform.anchorMin = Vector2.zero;
-        label.rectTransform.anchorMax = Vector2.one;
-        label.rectTransform.offsetMin = new Vector2(4f, 0f);
-        label.rectTransform.offsetMax = new Vector2(-4f, 0f);
-        label.font = referenceLabel?.font ?? TMP_Settings.defaultFontAsset;
-        label.fontSize = 13f;
-        label.color = new Color32(209, 206, 195, 255);
-        label.alignment = TextAlignmentOptions.Center;
-        label.raycastTarget = false;
-        label.text = "ВЫГРУЗИТЬ ВЕСЬ ЛУТ";
+        var icon = new GameObject("UnloadIcon", typeof(RectTransform), typeof(UnloadIconGraphic))
+            .GetComponent<UnloadIconGraphic>();
+        icon.rectTransform.SetParent(control.transform, false);
+        icon.rectTransform.anchorMin = new Vector2(0.22f, 0.22f);
+        icon.rectTransform.anchorMax = new Vector2(0.78f, 0.78f);
+        icon.rectTransform.offsetMin = Vector2.zero;
+        icon.rectTransform.offsetMax = Vector2.zero;
+        icon.color = new Color32(195, 196, 191, 255);
+        icon.raycastTarget = false;
         return button;
     }
 }
 
 internal sealed class UnloadButtonPosition : MonoBehaviour
 {
-    private RectTransform? sortingTable;
-    private RectTransform? reference;
-    private readonly Vector3[] corners = new Vector3[4];
+    private RectTransform pin = null!;
+    private RectTransform? lockButton;
 
-    internal void Bind(RectTransform tableButton)
+    internal void Bind(RectTransform pinButton, RectTransform? adjacentButton)
     {
-        sortingTable = tableButton;
-        reference = null;
+        pin = pinButton;
+        lockButton = adjacentButton;
+        LateUpdate();
     }
 
     private void LateUpdate()
     {
-        if (sortingTable == null || !sortingTable.gameObject.activeInHierarchy)
+        if (pin == null)
         {
             return;
         }
 
-        // The stash header is laid out after SimpleStashPanel.Show returns.
-        if (reference == null)
-        {
-            reference = sortingTable.GetComponentsInChildren<Image>()
-                .FirstOrDefault(image => image.rectTransform.rect.width is >= 90f and <= 140f
-                    && image.rectTransform.rect.height is >= 15f and <= 25f)?.rectTransform
-                ?? sortingTable.GetComponentInChildren<TextMeshProUGUI>()?.rectTransform
-                ?? sortingTable;
-        }
+        var rect = (RectTransform)transform;
+        rect.anchorMin = pin.anchorMin;
+        rect.anchorMax = pin.anchorMax;
+        rect.pivot = pin.pivot;
+        rect.sizeDelta = pin.sizeDelta;
+        rect.localScale = pin.localScale;
+        rect.localRotation = pin.localRotation;
+        float spacing = lockButton != null && lockButton.parent == pin.parent
+            ? pin.localPosition.y - lockButton.localPosition.y : 0;
+        float step = Mathf.Max(spacing, pin.rect.height + 2f);
+        rect.localPosition = pin.localPosition + Vector3.up * step;
+    }
+}
 
-        reference.GetWorldCorners(corners);
-        var toolbar = transform.parent;
-        var rightCenter = toolbar.InverseTransformPoint((corners[2] + corners[3]) * 0.5f);
-        transform.localPosition = rightCenter + new Vector3(5f, 0f, 0f);
+internal sealed class UnloadIconGraphic : MaskableGraphic
+{
+    protected override void OnPopulateMesh(VertexHelper vertices)
+    {
+        vertices.Clear();
+        var rect = rectTransform.rect;
+        Vector2 Point(float x, float y) => rect.min + Vector2.Scale(rect.size, new Vector2(x, y));
+
+        var tip = Point(0.5f, 0.40f);
+        AddLine(Point(0.5f, 0.88f), tip);
+        AddLine(Point(0.29f, 0.61f), tip);
+        AddLine(Point(0.71f, 0.61f), tip);
+
+        var left = Point(0.13f, 0.15f);
+        var right = Point(0.87f, 0.15f);
+        AddLine(Point(0.13f, 0.42f), left);
+        AddLine(left, right);
+        AddLine(right, Point(0.87f, 0.42f));
+
+        void AddLine(Vector2 start, Vector2 end)
+        {
+            var direction = (end - start).normalized;
+            var edge = new Vector2(-direction.y, direction.x) * (rect.width * 0.045f);
+            int first = vertices.currentVertCount;
+            vertices.AddVert(start + edge, color, Vector2.zero);
+            vertices.AddVert(end + edge, color, Vector2.zero);
+            vertices.AddVert(end - edge, color, Vector2.zero);
+            vertices.AddVert(start - edge, color, Vector2.zero);
+            vertices.AddTriangle(first, first + 1, first + 2);
+            vertices.AddTriangle(first + 2, first + 3, first);
+        }
     }
 }
