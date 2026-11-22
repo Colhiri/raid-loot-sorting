@@ -11,7 +11,7 @@ using UIFixes;
 
 namespace RaidLootSorting;
 
-[BepInPlugin("com.colhirux.raidlootsorting", "Raid Loot Sorting", "1.0.2")]
+[BepInPlugin("com.colhirux.raidlootsorting", "Raid Loot Sorting", "1.0.3")]
 [BepInProcess("EscapeFromTarkov.exe")]
 [BepInDependency("com.SPT.core")]
 [BepInDependency("Tyfon.UIFixes", "5.3.9")]

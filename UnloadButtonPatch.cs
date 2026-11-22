@@ -10,10 +10,6 @@ namespace RaidLootSorting;
 internal static class UnloadButtonPatch
 {
     private const string ButtonName = "RaidLootSortingButton";
-    private static readonly AccessTools.FieldRef<ToggleButton, Image> PinBackground =
-        AccessTools.FieldRefAccess<ToggleButton, Image>("_image");
-    private static readonly AccessTools.FieldRef<ToggleButton, Sprite> PinIdleSprite =
-        AccessTools.FieldRefAccess<ToggleButton, Sprite>("_onSprite");
 
     private static void Postfix(CompoundItem item, bool inRaid, ItemsPanel.EItemsTab tab,
         ToggleButton ____pinModeButton, ToggleButton ____lockModeButton)
@@ -32,7 +28,7 @@ internal static class UnloadButtonPatch
             return;
         }
 
-        button ??= Create(pin.parent, PinBackground(____pinModeButton), PinIdleSprite(____pinModeButton));
+        button ??= Create(pin.parent);
         button.GetComponent<UnloadButtonPosition>().Bind(pin, ____lockModeButton?.transform as RectTransform);
         button.GetComponent<HoverTooltipArea>().Init(context.Tooltip,
             "Выгрузить лут\nС выделением на ЧВК — только выделенное.\nБез снимка рейда — вся съёмная экипировка.", rawText: true);
@@ -42,36 +38,21 @@ internal static class UnloadButtonPatch
         button.gameObject.SetActive(true);
     }
 
-    private static Button Create(Transform parent, Image reference, Sprite idleSprite)
+    private static Button Create(Transform parent)
     {
-        var control = new GameObject(ButtonName, typeof(RectTransform), typeof(Image), typeof(Button),
+        var control = new GameObject(ButtonName, typeof(RectTransform), typeof(UnloadButtonGraphic), typeof(Button),
             typeof(LayoutElement), typeof(UnloadButtonPosition), typeof(HoverTooltipArea));
         control.transform.SetParent(parent, false);
         control.GetComponent<LayoutElement>().ignoreLayout = true;
 
-        var background = control.GetComponent<Image>();
-        background.sprite = idleSprite != null ? idleSprite : reference.sprite;
-        background.type = reference.type;
-        background.color = reference.color;
-
         var button = control.GetComponent<Button>();
-        button.targetGraphic = background;
+        button.targetGraphic = control.GetComponent<UnloadButtonGraphic>();
         button.navigation = new Navigation { mode = Navigation.Mode.None };
         var colors = button.colors;
-        colors.normalColor = Color.white;
+        colors.normalColor = new Color(0.94f, 0.94f, 0.94f);
         colors.highlightedColor = Color.white;
         colors.pressedColor = new Color(0.75f, 0.75f, 0.75f);
         button.colors = colors;
-
-        var icon = new GameObject("UnloadIcon", typeof(RectTransform), typeof(UnloadIconGraphic))
-            .GetComponent<UnloadIconGraphic>();
-        icon.rectTransform.SetParent(control.transform, false);
-        icon.rectTransform.anchorMin = new Vector2(0.22f, 0.22f);
-        icon.rectTransform.anchorMax = new Vector2(0.78f, 0.78f);
-        icon.rectTransform.offsetMin = Vector2.zero;
-        icon.rectTransform.offsetMax = Vector2.zero;
-        icon.color = new Color32(195, 196, 191, 255);
-        icon.raycastTarget = false;
         return button;
     }
 }
@@ -109,34 +90,46 @@ internal sealed class UnloadButtonPosition : MonoBehaviour
     }
 }
 
-internal sealed class UnloadIconGraphic : MaskableGraphic
+internal sealed class UnloadButtonGraphic : MaskableGraphic
 {
     protected override void OnPopulateMesh(VertexHelper vertices)
     {
         vertices.Clear();
         var rect = rectTransform.rect;
-        Vector2 Point(float x, float y) => rect.min + Vector2.Scale(rect.size, new Vector2(x, y));
+        var background = new Color32(49, 57, 61, 255);
+        var ink = new Color32(194, 198, 197, 255);
 
-        var tip = Point(0.5f, 0.40f);
-        AddLine(Point(0.5f, 0.88f), tip);
-        AddLine(Point(0.29f, 0.61f), tip);
-        AddLine(Point(0.71f, 0.61f), tip);
+        // Match the size and clipped corner of the neighboring stash buttons.
+        AddQuad(0f, 0f, 1f, 0.85f, background);
+        AddQuad(0.15f, 0.85f, 1f, 1f, background);
+        AddTriangle(new Vector2(0f, 0.85f), new Vector2(0.15f, 1f), new Vector2(0.15f, 0.85f), background);
 
-        var left = Point(0.13f, 0.15f);
-        var right = Point(0.87f, 0.15f);
-        AddLine(Point(0.13f, 0.42f), left);
-        AddLine(left, right);
-        AddLine(right, Point(0.87f, 0.42f));
+        // Transfer arrow and the outline of its destination.
+        AddQuad(0.25f, 0.47f, 0.46f, 0.53f, ink);
+        AddTriangle(new Vector2(0.44f, 0.39f), new Vector2(0.44f, 0.61f), new Vector2(0.58f, 0.5f), ink);
+        AddQuad(0.56f, 0.30f, 0.75f, 0.355f, ink);
+        AddQuad(0.695f, 0.355f, 0.75f, 0.645f, ink);
+        AddQuad(0.56f, 0.645f, 0.75f, 0.70f, ink);
 
-        void AddLine(Vector2 start, Vector2 end)
+        void AddVertex(Vector2 point, Color32 tint)
+            => vertices.AddVert(rect.min + Vector2.Scale(rect.size, point), tint, Vector2.zero);
+
+        void AddTriangle(Vector2 a, Vector2 b, Vector2 c, Color32 tint)
         {
-            var direction = (end - start).normalized;
-            var edge = new Vector2(-direction.y, direction.x) * (rect.width * 0.045f);
             int first = vertices.currentVertCount;
-            vertices.AddVert(start + edge, color, Vector2.zero);
-            vertices.AddVert(end + edge, color, Vector2.zero);
-            vertices.AddVert(end - edge, color, Vector2.zero);
-            vertices.AddVert(start - edge, color, Vector2.zero);
+            AddVertex(a, tint);
+            AddVertex(b, tint);
+            AddVertex(c, tint);
+            vertices.AddTriangle(first, first + 1, first + 2);
+        }
+
+        void AddQuad(float left, float bottom, float right, float top, Color32 tint)
+        {
+            int first = vertices.currentVertCount;
+            AddVertex(new Vector2(left, bottom), tint);
+            AddVertex(new Vector2(left, top), tint);
+            AddVertex(new Vector2(right, top), tint);
+            AddVertex(new Vector2(right, bottom), tint);
             vertices.AddTriangle(first, first + 1, first + 2);
             vertices.AddTriangle(first + 2, first + 3, first);
         }
