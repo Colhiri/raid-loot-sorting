@@ -4,6 +4,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <Version>1.0.1</Version>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <GameManaged>$(SptRoot)/EscapeFromTarkov_Data/Managed</GameManaged>
   </PropertyGroup>
   <ItemGroup>
