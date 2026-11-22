@@ -88,7 +88,18 @@ internal static class InventoryTree
 
     internal static bool IsProtected(Item item) => item.PinLockState is EItemPinLockState.Pinned or EItemPinLockState.Locked;
 
-    internal static IEnumerable<LootEntry> RaidLoot(Item parent, IReadOnlyDictionary<string, int> loadout, bool gridsOnly = false)
+    internal static IEnumerable<Item> SelectionRoots(HashSet<Item> selection)
+        => selection.Where(item => !item.GetAllParentItems().Any(selection.Contains));
+
+    internal static IEnumerable<LootEntry> EquipmentLoot(Item equipment, HashSet<Item> selection,
+        IReadOnlyDictionary<string, int>? loadout)
+        => selection.Count == 0
+            ? RaidLoot(equipment, loadout)
+            : SelectionRoots(selection).SelectMany(item => IsStorage(item)
+                ? RaidLoot(item, loadout: null, gridsOnly: true)
+                : new[] { new LootEntry(item) });
+
+    internal static IEnumerable<LootEntry> RaidLoot(Item parent, IReadOnlyDictionary<string, int>? loadout, bool gridsOnly = false)
     {
         if (parent is not GClass3248 collection || parent is AmmoBox or RandomLootContainerItemClass)
         {
@@ -105,7 +116,8 @@ internal static class InventoryTree
                 continue;
             }
 
-            bool retained = loadout.TryGetValue(child.Id, out int originalCount);
+            int originalCount = 0;
+            bool retained = loadout != null && loadout.TryGetValue(child.Id, out originalCount);
             bool isPockets = equipment != null && slot == equipment.GetSlot(EquipmentSlot.Pockets);
             if (retained || isPockets || !CanTake(child))
             {
