@@ -124,9 +124,10 @@ internal static class LootSorting
         }
 
         var grid = stash.Grid;
-        int firstRow = FirstRowBelowItems(grid);
+        int firstRow = GridPlacement.BelowMainStash(grid);
         foreach (var group in new[] { overflow, otherLoot })
         {
+            int endRow = firstRow;
             foreach (var entry in group)
             {
                 if (!CanContinue(player, stash))
@@ -139,7 +140,7 @@ internal static class LootSorting
                     continue;
                 }
 
-                var outcome = await TryStashGrid(player, stash, entry, firstRow);
+                var (outcome, itemEndRow) = await TryGrid(player, entry, grid, firstRow);
                 if (outcome is Outcome.NoSpace or Outcome.Interrupted)
                 {
                     Report(moved, loot.Length, outcome);
@@ -148,10 +149,14 @@ internal static class LootSorting
                 if (outcome == Outcome.Moved)
                 {
                     moved++;
+                    endRow = Math.Max(endRow, itemEndRow);
                 }
             }
 
-            firstRow = FirstRowBelowItems(grid);
+            if (group == overflow && endRow > firstRow)
+            {
+                firstRow = GridPlacement.AfterDivider(grid, endRow);
+            }
         }
 
         Report(moved, loot.Length, Outcome.Unavailable);
@@ -226,13 +231,8 @@ internal static class LootSorting
         var available = containers.Where(container => InStash(container, stash));
         foreach (var grid in ContainerSorting.Destinations(item, ContainerSorting.Group(item), available, junkOnly, improveCurrent))
         {
-            var address = grid.FindLocationForItem(item);
-            if (address == null || !WithinGrid(item, address))
-            {
-                continue;
-            }
-            var outcome = await Move(player, entry, address);
-            if (outcome != Outcome.Unavailable)
+            var (outcome, _) = await TryGrid(player, entry, grid);
+            if (outcome is Outcome.Moved or Outcome.Interrupted)
             {
                 return outcome;
             }
@@ -241,56 +241,26 @@ internal static class LootSorting
         return Outcome.Unavailable;
     }
 
-    private static int FirstRowBelowItems(Grid grid)
+    private static async Task<(Outcome Outcome, int EndRow)> TryGrid(BackEndInventoryController player, LootEntry entry,
+        Grid grid, int firstRow = 0)
     {
-        int end = 0;
-        foreach (var item in grid.Items)
+        if (!grid.CheckCompatibility(entry.Item))
         {
-            if (grid.GetItemLocation(item) is { } at)
+            return (Outcome.Unavailable, firstRow);
+        }
+
+        var result = Outcome.NoSpace;
+        foreach (var location in GridPlacement.FreeLocations(grid, entry.Item, firstRow))
+        {
+            int endRow = location.y + entry.Item.CalculateRotatedSize(location.r).Y;
+            result = await Move(player, entry, grid.CreateItemAddress(location));
+            if (result != Outcome.Unavailable)
             {
-                end = Math.Max(end, at.y + item.CalculateRotatedSize(at.r).Y);
+                return (result, endRow);
             }
         }
 
-        return end == 0 ? 0 : end + 1;
-    }
-
-    private static Task<Outcome> TryStashGrid(BackEndInventoryController player, Stash stash, LootEntry entry, int firstRow)
-    {
-        var grid = stash.Grid;
-        var item = entry.Item;
-        if (!grid.CheckCompatibility(item))
-        {
-            return Task.FromResult(Outcome.Unavailable);
-        }
-
-        var wide = item.CalculateRotatedSize(ItemRotation.Horizontal);
-        var tall = item.CalculateRotatedSize(ItemRotation.Vertical);
-        for (int y = firstRow; y <= grid.GridHeight - Math.Min(wide.Y, tall.Y); y++)
-        {
-            for (int x = 0; x <= grid.GridWidth - Math.Min(wide.X, tall.X); x++)
-            {
-                var horizontal = new LocationInGrid(x, y, ItemRotation.Horizontal);
-                if (x + wide.X <= grid.GridWidth && y + wide.Y <= grid.GridHeight && grid.HasFreeSpace(item, horizontal))
-                {
-                    return Move(player, entry, grid.CreateItemAddress(horizontal));
-                }
-                var vertical = new LocationInGrid(x, y, ItemRotation.Vertical);
-                if (x + tall.X <= grid.GridWidth && y + tall.Y <= grid.GridHeight && grid.HasFreeSpace(item, vertical))
-                {
-                    return Move(player, entry, grid.CreateItemAddress(vertical));
-                }
-            }
-        }
-
-        return Task.FromResult(Outcome.NoSpace);
-    }
-
-    private static bool WithinGrid(Item item, GridItemAddress address)
-    {
-        var at = address.LocationInGrid;
-        var size = item.CalculateRotatedSize(at.r);
-        return at.x >= 0 && at.y >= 0 && at.x + size.X <= address.Grid.GridWidth && at.y + size.Y <= address.Grid.GridHeight;
+        return (result, firstRow);
     }
 
     private static async Task<Outcome> Move(BackEndInventoryController player, LootEntry entry, ItemAddress address)
@@ -330,7 +300,7 @@ internal static class LootSorting
         }
         else if (outcome == Outcome.NoSpace)
         {
-            NotificationManager.DisplayWarningNotification($"В нижней части схрона закончилось место. Перемещено: {moved}, осталось: {total - moved}.");
+            NotificationManager.DisplayWarningNotification($"В зоне выгрузки схрона нет места для следующего предмета. Перемещено: {moved}, осталось: {total - moved}.");
         }
         else if (moved == 0)
         {
