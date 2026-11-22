@@ -1,6 +1,11 @@
 # Raid Loot Sorting
 
-Мод для SPT 4.0.13 и Tarkov 0.16.9.40087. Для выделения нескольких предметов используется [UI Fixes 5.3.9](https://github.com/tyfon7/UIFixes/releases/tag/v5.3.9).
+Мод для выгрузки рейдового лута и распределения предметов по контейнерам в SPT.
+
+| Ветка | SPT | Tarkov | UI Fixes | Архив |
+| --- | --- | --- | --- | --- |
+| `main` | 4.1.6 | 0.16.9.5.40743 | [6.0.4](https://github.com/tyfon7/UIFixes/releases/tag/v6.0.4) | `RaidLootSorting-1.1.0-SPT4.1.6.zip` |
+| `support/4.0` | 4.0.13 | 0.16.9.0.40087 | [5.3.9](https://github.com/tyfon7/UIFixes/releases/tag/v5.3.9) | `RaidLootSorting-1.0.1-SPT4.0.13.zip` |
 
 ## Выгрузка после рейда
 
@@ -20,10 +25,12 @@
 
 ## Установка
 
-Распакуй архив в корень SPT. DLL должна находиться в `BepInEx/plugins/RaidLootSorting/RaidLootSorting.dll`. При удалении мода можно также удалить снимки из `BepInEx/config/RaidLootSorting`.
+Установи подходящую версию UI Fixes и распакуй архив для своей версии в корень SPT. DLL должна находиться в `BepInEx/plugins/RaidLootSorting/RaidLootSorting.dll`. При удалении мода можно также удалить снимки из `BepInEx/config/RaidLootSorting`.
 
 ## Сборка
 
 ```powershell
-dotnet build RaidLootSorting/RaidLootSorting.csproj -c Release -p:SptRoot=D:/SPT
+dotnet build RaidLootSorting.csproj -c Release -p:SptRoot=D:/SPT-4.1.6
 ```
+
+Компиляция использует клиентские DLL из указанной установки после патча SPT. Для 4.0.13 переключись на `support/4.0` и укажи путь к установке 4.0.13.

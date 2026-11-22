@@ -31,7 +31,7 @@ internal static class UnloadButtonPatch
 
         button ??= Create(toolbar, ____sortingTableTab.GetComponentInChildren<TextMeshProUGUI>(true));
         button.GetComponent<UnloadButtonPosition>().Bind(tableButton);
-        string profileId = player.Profile_0.Id;
+        string profileId = player._clientProfile.Id;
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(() => LootSorting.Unload(profileId));
         button.gameObject.SetActive(true);

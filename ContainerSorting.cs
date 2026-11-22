@@ -67,12 +67,12 @@ internal static class ContainerSorting
         return IsJunk(item) ? Category.Junk : Category.Other;
     }
 
-    internal static IEnumerable<StashGridClass> Destinations(Item item, Category category,
+    internal static IEnumerable<Grid> Destinations(Item item, Category category,
         IEnumerable<CompoundItem> containers, bool junkOnly, bool improveCurrent)
     {
         var current = item.CurrentAddress?.Container?.ParentItem as CompoundItem;
         int currentRank = improveCurrent && current != null && InventoryTree.IsStorage(current)
-            && current is not StashItemClass
+            && current is not Stash
             ? Rank(current, category) : int.MaxValue;
 
         return containers

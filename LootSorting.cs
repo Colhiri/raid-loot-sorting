@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Diz.LanguageExtensions;
+using EFT.Communications;
 using EFT.InventoryLogic;
 using EFT.UI;
 using HarmonyLib;
@@ -12,16 +14,16 @@ namespace RaidLootSorting;
 internal static class LootSorting
 {
     private static readonly AccessTools.FieldRef<ItemUiContext, InventoryController> ContextController =
-        AccessTools.FieldRefAccess<ItemUiContext, InventoryController>("inventoryController_0");
+        AccessTools.FieldRefAccess<ItemUiContext, InventoryController>("_inventoryController");
 
     private static bool busy;
 
     private enum Outcome { Moved, Unavailable, NoSpace, Interrupted }
 
-    internal static bool TryGetStash(ItemUiContext? context, out GClass3387 player, out StashItemClass stash)
+    internal static bool TryGetStash(ItemUiContext? context, out BackEndInventoryController player, out Stash stash)
     {
         if (context != null && context.ContextType == EItemUiContextType.InventoryScreen && !RaidLootPlugin.InRaid()
-            && ContextController(context) is GClass3387 current && current.Inventory?.Stash is { } currentStash)
+            && ContextController(context) is BackEndInventoryController current && current.Inventory?.Stash is { } currentStash)
         {
             player = current;
             stash = currentStash;
@@ -35,13 +37,13 @@ internal static class LootSorting
 
     internal static void Unload(string profileId)
     {
-        if (TryGetStash(ItemUiContext.Instance, out var player, out var stash) && player.Profile_0.Id == profileId)
+        if (TryGetStash(ItemUiContext.Instance, out var player, out var stash) && player._clientProfile.Id == profileId)
         {
             _ = Run(() => UnloadRaidLoot(player, stash));
         }
     }
 
-    internal static void Distribute(GClass3387 player, StashItemClass stash, Item[] selection)
+    internal static void Distribute(BackEndInventoryController player, Stash stash, Item[] selection)
         => _ = Run(() => DistributeSelection(player, stash, selection));
 
     private static async Task Run(Func<Task> action)
@@ -59,7 +61,7 @@ internal static class LootSorting
         catch (Exception error)
         {
             RaidLootPlugin.Log.LogError(error);
-            NotificationManagerClass.DisplayWarningNotification("Сортировка остановлена из-за ошибки переноса.");
+            NotificationManager.DisplayWarningNotification("Сортировка остановлена из-за ошибки переноса.");
         }
         finally
         {
@@ -67,12 +69,12 @@ internal static class LootSorting
         }
     }
 
-    private static async Task UnloadRaidLoot(GClass3387 player, StashItemClass stash)
+    private static async Task UnloadRaidLoot(BackEndInventoryController player, Stash stash)
     {
-        var loadout = RaidLoadout.Read(player.Profile_0);
+        var loadout = RaidLoadout.Read(player._clientProfile);
         if (loadout == null)
         {
-            NotificationManagerClass.DisplayWarningNotification(
+            NotificationManager.DisplayWarningNotification(
                 "Нет данных об экипировке на старте рейда. Мод запомнит её при следующем входе за ЧВК. Сохранять сборку вручную не нужно.");
             return;
         }
@@ -81,7 +83,7 @@ internal static class LootSorting
         var loot = Sort(RaidLoot(equipment, loadout)).ToArray();
         if (loot.Length == 0)
         {
-            NotificationManagerClass.DisplayMessageNotification("На персонаже нет нового лута для выгрузки.");
+            NotificationManager.DisplayMessageNotification("На персонаже нет нового лута для выгрузки.");
             return;
         }
 
@@ -157,7 +159,7 @@ internal static class LootSorting
         Report(moved, loot.Length, Outcome.Unavailable);
     }
 
-    private static async Task DistributeSelection(GClass3387 player, StashItemClass stash, Item[] selection)
+    private static async Task DistributeSelection(BackEndInventoryController player, Stash stash, Item[] selection)
     {
         if (!CanContinue(player, stash))
         {
@@ -207,20 +209,20 @@ internal static class LootSorting
             && !HasProtectedDescendants(entry.Item, loadout)
             && (!entry.EmptyStorageFirst || ((CompoundItem)entry.Item).IsEmpty);
 
-    private static bool CanContinue(GClass3387 player, StashItemClass stash)
+    private static bool CanContinue(BackEndInventoryController player, Stash stash)
         => TryGetStash(ItemUiContext.Instance, out var currentPlayer, out var currentStash)
             && currentPlayer == player && currentStash == stash;
 
-    private static IEnumerable<CompoundItem> StashContainers(StashItemClass stash)
+    private static IEnumerable<CompoundItem> StashContainers(Stash stash)
         => stash.GetAllItems().OfType<CompoundItem>()
-            .Where(item => item != stash && IsStorage(item) && item.CurrentAddress is GClass3393 && InStash(item, stash));
+            .Where(item => item != stash && IsStorage(item) && item.CurrentAddress is GridItemAddress && InStash(item, stash));
 
     private static IOrderedEnumerable<LootEntry> Sort(IEnumerable<LootEntry> entries) => entries
         .OrderBy(entry => ContainerSorting.Group(entry.Item))
         .ThenByDescending(entry => entry.EmptyStorageFirst ? entry.Item.GetAllParentItems().Count() : 0)
         .ThenBy(entry => entry.Item.StringTemplateId, StringComparer.Ordinal);
 
-    private static async Task<Outcome> TryContainers(GClass3387 player, StashItemClass stash, LootEntry entry,
+    private static async Task<Outcome> TryContainers(BackEndInventoryController player, Stash stash, LootEntry entry,
         IEnumerable<CompoundItem> containers, bool junkOnly = false, bool improveCurrent = false)
     {
         var item = entry.Item;
@@ -242,7 +244,7 @@ internal static class LootSorting
         return Outcome.Unavailable;
     }
 
-    private static int FirstRowBelowItems(StashGridClass grid)
+    private static int FirstRowBelowItems(Grid grid)
     {
         int end = 0;
         foreach (var item in grid.Items)
@@ -256,7 +258,7 @@ internal static class LootSorting
         return end == 0 ? 0 : end + 1;
     }
 
-    private static Task<Outcome> TryStashGrid(GClass3387 player, StashItemClass stash, LootEntry entry, int firstRow)
+    private static Task<Outcome> TryStashGrid(BackEndInventoryController player, Stash stash, LootEntry entry, int firstRow)
     {
         var grid = stash.Grid;
         var item = entry.Item;
@@ -272,12 +274,12 @@ internal static class LootSorting
             for (int x = 0; x <= grid.GridWidth - Math.Min(wide.X, tall.X); x++)
             {
                 var horizontal = new LocationInGrid(x, y, ItemRotation.Horizontal);
-                if (x + wide.X <= grid.GridWidth && y + wide.Y <= grid.GridHeight && grid.method_0(item, horizontal))
+                if (x + wide.X <= grid.GridWidth && y + wide.Y <= grid.GridHeight && grid.HasFreeSpace(item, horizontal))
                 {
                     return Move(player, entry, grid.CreateItemAddress(horizontal));
                 }
                 var vertical = new LocationInGrid(x, y, ItemRotation.Vertical);
-                if (x + tall.X <= grid.GridWidth && y + tall.Y <= grid.GridHeight && grid.method_0(item, vertical))
+                if (x + tall.X <= grid.GridWidth && y + tall.Y <= grid.GridHeight && grid.HasFreeSpace(item, vertical))
                 {
                     return Move(player, entry, grid.CreateItemAddress(vertical));
                 }
@@ -287,19 +289,19 @@ internal static class LootSorting
         return Task.FromResult(Outcome.NoSpace);
     }
 
-    private static bool WithinGrid(Item item, GClass3393 address)
+    private static bool WithinGrid(Item item, GridItemAddress address)
     {
         var at = address.LocationInGrid;
         var size = item.CalculateRotatedSize(at.r);
         return at.x >= 0 && at.y >= 0 && at.x + size.X <= address.Grid.GridWidth && at.y + size.Y <= address.Grid.GridHeight;
     }
 
-    private static async Task<Outcome> Move(GClass3387 player, LootEntry entry, ItemAddress address)
+    private static async Task<Outcome> Move(BackEndInventoryController player, LootEntry entry, ItemAddress address)
     {
         var item = entry.Item;
-        GStruct153 operation = entry.KeepCount > 0
-            ? InteractionsHandlerClass.SplitExact(item, item.StackObjectsCount - entry.KeepCount, address, player, player, simulate: true)
-            : InteractionsHandlerClass.Move(item, address, player, simulate: true);
+        OperationResult operation = entry.KeepCount > 0
+            ? ItemManipulator.SplitExact(item, item.StackObjectsCount - entry.KeepCount, address, player, player, simulate: true)
+            : ItemManipulator.Move(item, address, player, simulate: true);
 
         if (operation.Failed || !player.CanExecute(operation.Value)
             || operation.Value is IDestroyResult { ItemsDestroyRequired: true })
@@ -312,7 +314,7 @@ internal static class LootSorting
         {
             // The local callback fires before the game adds the command to its outgoing queue.
             await Task.Yield();
-            result = await player.IBackEndSession.FlushOperationQueue();
+            result = await player._backendSession.FlushOperationQueue();
             if (result.Succeed)
             {
                 return Outcome.Moved;
@@ -327,19 +329,19 @@ internal static class LootSorting
     {
         if (outcome == Outcome.Interrupted)
         {
-            NotificationManagerClass.DisplayWarningNotification($"Перенос прерван. Перемещено: {moved}.");
+            NotificationManager.DisplayWarningNotification($"Перенос прерван. Перемещено: {moved}.");
         }
         else if (outcome == Outcome.NoSpace)
         {
-            NotificationManagerClass.DisplayWarningNotification($"В нижней части схрона закончилось место. Перемещено: {moved}, осталось: {total - moved}.");
+            NotificationManager.DisplayWarningNotification($"В нижней части схрона закончилось место. Перемещено: {moved}, осталось: {total - moved}.");
         }
         else if (moved == 0)
         {
-            NotificationManagerClass.DisplayMessageNotification("Нет предметов, которые можно переместить в подходящее место.");
+            NotificationManager.DisplayMessageNotification("Нет предметов, которые можно переместить в подходящее место.");
         }
         else
         {
-            NotificationManagerClass.DisplayMessageNotification($"Перемещено: {moved}, осталось на месте: {total - moved}.");
+            NotificationManager.DisplayMessageNotification($"Перемещено: {moved}, осталось на месте: {total - moved}.");
         }
     }
 }

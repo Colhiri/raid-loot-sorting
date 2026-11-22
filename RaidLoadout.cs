@@ -78,24 +78,24 @@ internal static class RaidLoadout
 
 internal static class InventoryTree
 {
-    internal static bool InStash(Item item, StashItemClass stash)
+    internal static bool InStash(Item item, Stash stash)
         => item.GetAllParentLocations().Any(address => address.Container == stash.Grid);
 
     internal static bool CanTake(Item item)
         => !item.QuestItem && !IsProtected(item) && item.CurrentAddress is { } address
             && (address.Container is not Slot slot || (!slot.Locked && !item.IsUnremovable))
-            && !item.GetAllParentItems().Any(parent => parent is AmmoBox or RandomLootContainerItemClass);
+            && !item.GetAllParentItems().Any(parent => parent is AmmoBox or SingleUseContainer);
 
     internal static bool IsProtected(Item item) => item.PinLockState is EItemPinLockState.Pinned or EItemPinLockState.Locked;
 
     internal static IEnumerable<LootEntry> RaidLoot(Item parent, IReadOnlyDictionary<string, int> loadout, bool gridsOnly = false)
     {
-        if (parent is not GClass3248 collection || parent is AmmoBox or RandomLootContainerItemClass)
+        if (parent is not ContainerCollection collection || parent is AmmoBox or SingleUseContainer)
         {
             yield break;
         }
 
-        foreach (var child in collection.Containers.Where(container => !gridsOnly || container is StashGridClass)
+        foreach (var child in collection.Containers.Where(container => !gridsOnly || container is Grid)
                      .SelectMany(container => container.Items))
         {
             var equipment = parent as InventoryEquipment;
@@ -152,7 +152,7 @@ internal static class InventoryTree
             && (child.QuestItem || IsProtected(child) || loadout?.ContainsKey(child.Id) == true));
 
     internal static bool IsStorage(Item item) => item is CompoundItem { Grids.Length: > 0 }
-        && item is not AmmoBox and not RandomLootContainerItemClass and not Weapon;
+        && item is not AmmoBox and not SingleUseContainer and not Weapon;
 
     internal readonly struct LootEntry
     {
